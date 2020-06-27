@@ -21,6 +21,10 @@ class SrcPlugin(separatedAddSub : Boolean = false, executeInsertion : Boolean = 
 
     decode.insert(SRC2_FORCE_ZERO) := decode.input(SRC_ADD_ZERO) && !decode.input(SRC_USE_SUB_LESS)
 
+    /*cxzzzz:By default SRC1/SRC2 are generated in the Decode stage, but if this parameter is true, 
+      it is done in the Execute stage (It will relax the bypassing network)
+      SRC1\SRC2的value的产生在哪个流水级:1、decode2、execute(由于晚了一个周期索要结果，留给前方指令产生结果的周期更多，更利于旁路,但增加execute的延迟)
+    */
     val insertionStage = if(executeInsertion) execute else decode
     insertionStage plug new Area{
       import insertionStage._
@@ -40,6 +44,7 @@ class SrcPlugin(separatedAddSub : Boolean = false, executeInsertion : Boolean = 
       )
     }
 
+    //cxzzzz:-?:executeInsertion=False && decodeAddSub=True时会不会出错？（在产生SRC1、SRC2前就已使用）
     val addSubStage = if(decodeAddSub) decode else execute
     if(separatedAddSub) {
       addSubStage plug new Area {

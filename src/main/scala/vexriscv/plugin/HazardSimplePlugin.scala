@@ -34,6 +34,7 @@ class HazardSimplePlugin(bypassExecute : Boolean = false,
     val src0Hazard = False
     val src1Hazard = False
 
+    //cxzzzz:readStage可能出现在decode/execute(SYNC register file)
     val readStage = service(classOf[RegFileService]).readStage()
 
     def trackHazardWithStage(stage : Stage,bypassable : Boolean, runtimeBypassable : Stageable[Bool]): Unit ={

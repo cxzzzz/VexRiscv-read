@@ -67,7 +67,11 @@ case class VexRiscvConfig(){
   object FORMAL_MEM_WDATA  extends Stageable(Bits(32 bits))
   object FORMAL_INSTRUCTION extends Stageable(Bits(32 bits))
 
-
+  /*cxzzzz:-?:
+    RS:RS1寄存器的值
+    URS1:RS1寄存器的编号(哪些指令需要？)
+    PC_INCREMENT:2/4(取决于当前指令是否为Compressed)
+  */
   object Src1CtrlEnum extends SpinalEnum(binarySequential){
     val RS, IMU, PC_INCREMENT, URS1 = newElement()   //IMU, IMZ IMJB
   }

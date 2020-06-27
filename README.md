@@ -4,7 +4,8 @@
 本人初学SpinalHLD和RiscV,想通过阅读源码进行进一步的学习,顺便为源码增加一些注释,便于理解。
 
 ## 参考资料
-* [RISC-V手册](crva.ict.ac.cn/documents/RISC-V-Reader-Chinese-v2p1.pdf)
+* [RISC-V手册](http://crva.ict.ac.cn/documents/RISC-V-Reader-Chinese-v2p1.pdf)
+* [Privileged ISA Specification](https://riscv.org/specifications/privileged-isa/)
 
 <!--
 ## 注释说明

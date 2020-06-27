@@ -216,6 +216,7 @@ object LinuxGen {
         //            ioRange      = _(31 downto 28) === 0xF
         //          ),
 
+        //cxzzzz: decode stage
         new DecoderSimplePlugin(
           catchIllegalInstruction = true
         ),
@@ -223,10 +224,16 @@ object LinuxGen {
           regFileReadyKind = plugin.SYNC,
           zeroBoot = true
         ),
+
+        //cxzzzz: execute stage
         new IntAluPlugin,
+
+        //cxzzzz: decode/execute stage(SRC1/SRC2的值在decode阶段产生)
         new SrcPlugin(
           separatedAddSub = false
         ),
+
+        //cxzzzz: execute/memory stage(移位采用2周期)
         new FullBarrelShifterPlugin(earlyInjection = false),
         //        new LightShifterPlugin,
         new HazardSimplePlugin(

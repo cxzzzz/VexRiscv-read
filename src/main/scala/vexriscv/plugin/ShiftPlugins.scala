@@ -6,6 +6,9 @@ import spinal.lib.Reverse
 
 
 
+/*cxzzzz: earlyInjection: By default the result of the shift is injected into the pipeline in the Memory stage to relax timings, 
+    but if this option is true it will be done in the Execute stage
+*/
 class FullBarrelShifterPlugin(earlyInjection : Boolean = false) extends Plugin[VexRiscv]{
   object ShiftCtrlEnum extends SpinalEnum(binarySequential){
     val DISABLE, SLL, SRL, SRA = newElement()
