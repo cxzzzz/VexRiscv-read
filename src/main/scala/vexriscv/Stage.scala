@@ -7,7 +7,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 /*
-  猜测:仅一个与Stage配合的特定类型,用于封装Stage的输入输出,没有实际方法
+  cxzzzz:猜测:仅一个与Stage配合的特定类型,用于封装Stage的输入输出,没有实际方法
 */
 class Stageable[T <: Data](_dataType : => T) extends HardType[T](_dataType) with Nameable{
   def dataType = apply()
@@ -25,6 +25,7 @@ class Stage() extends Area{
     ret
   }
 
+  //cxzzzz:input、output、insert均在Stage内部为key创建了一个副本(key()生成一个key的克隆)
   def input[T <: Data](key : Stageable[T]) : T = {
     inputs.getOrElseUpdate(key.asInstanceOf[Stageable[Data]],outsideCondScope{
       val input,inputDefault = key()
@@ -62,7 +63,7 @@ class Stage() extends Area{
     val isFiring    = Bool           //Inform if the current instruction will go to the next stage the next cycle (isValid && !isStuck && !removeIt)
   }
 
-
+  //cxzzzz:-?:输入端口、输出端口、内部信号（猜测）、???
   val inputs   = mutable.HashMap[Stageable[Data],Data]()
   val outputs  = mutable.HashMap[Stageable[Data],Data]()
   val signals  = mutable.HashMap[Stageable[Data],Data]()

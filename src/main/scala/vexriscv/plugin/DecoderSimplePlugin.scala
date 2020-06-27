@@ -51,6 +51,7 @@ class DecoderSimplePlugin(catchIllegalInstruction : Boolean = false,
   override def add(encoding: Seq[(MaskedLiteral, Seq[(Stageable[_ <: BaseType], Any)])]): Unit = encoding.foreach(e => this.add(e._1,e._2))
   override def add(key: MaskedLiteral, values: Seq[(Stageable[_ <: BaseType], Any)]): Unit = {
     val instructionModel = encodings.getOrElseUpdate(key,ArrayBuffer[(Stageable[_ <: BaseType], BaseType)]())
+    //cxzzzz: e.g. (a,b) : (ALU_CTRL , AluCtrlEnum.ADD_SUB),  (SRC_USE_SUB_LESS , False)
     values.map{case (a,b) => {
       assert(!instructionModel.contains(a), s"Over specification of $a")
       val value = b match {
@@ -61,6 +62,7 @@ class DecoderSimplePlugin(catchIllegalInstruction : Boolean = false,
     }}
   }
 
+  //cxzzzz:设置各个配置项的默认值
   override def addDefault(key: Stageable[_  <: BaseType], value: Any): Unit = {
     assert(!defaults.contains(key))
     defaults(key) = value match{
@@ -87,11 +89,14 @@ class DecoderSimplePlugin(catchIllegalInstruction : Boolean = false,
 
   override def build(pipeline: VexRiscv): Unit = {
     import pipeline.config._
+    //cxzzzz:引入decode Stage,以下input、insert等均为decode.xxx
     import pipeline.decode._
 
+    // cxzzzz:获取各个配置项的key
     val stageables = (encodings.flatMap(_._2.map(_._1)) ++ defaults.map(_._1)).toSet.toList
 
     val stupidDecoder = false
+    //cxzzzz:最简单的按优先级赋值
     if(stupidDecoder){
       if (detectLegalInstructions) insert(LEGAL_INSTRUCTION) := False
       for(stageable <- stageables){
@@ -115,6 +120,13 @@ class DecoderSimplePlugin(catchIllegalInstruction : Boolean = false,
       val offsetOf = mutable.LinkedHashMap[Stageable[_ <: BaseType], Int]()
 
       //Build defaults value and field offset map
+      /* cxzzzz:生成了一张二维表，记录了各个bit的默认值。例如
+        -------------------------------------------
+        key   |ALU_CTRL|RS1_USE|RS2_USE|...  //存储于offsetOf中
+        value |00010110|      1|      1|...
+        care  |11111111|      1|      1|...  //default中care全1
+        -------------------------------------------
+      */
       stageables.foreach(e => {
         defaults.get(e) match {
           case Some(value) => {
@@ -133,6 +145,22 @@ class DecoderSimplePlugin(catchIllegalInstruction : Boolean = false,
       })
 
       //Build spec
+      /* cxzzzz:针对每条指令生成一张二维表，记录了指令对应的各bit值。例如
+
+        ADD:
+        指令
+        -------------------------------------------
+        value |0000000xxxxxxxxxx000xxxxx0110011
+        care  |11111110000000000111000001111111
+        -------------------------------------------
+
+        解码
+        -------------------------------------------
+        key   |ALU_CTRL|RS1_USE|RS2_USE|... 
+        value |00010110|      1|      1|...
+        care  |00111110|      1|      1|...
+        -------------------------------------------
+      */
       val spec = encodings.map { case (key, values) =>
         var decodedValue = defaultValue
         var decodedCare = defaultCare
@@ -150,7 +178,7 @@ class DecoderSimplePlugin(catchIllegalInstruction : Boolean = false,
 
 
       // logic implementation
-      val decodedBits = Bits(stageables.foldLeft(0)(_ + _.dataType.getBitsWidth) bits)
+      val decodedBits = Bits(stageables.foldLeft(0)(_ + _.dataType.getBitsWidth) bits) 
       decodedBits := Symplify(input(INSTRUCTION), spec, decodedBits.getWidth)
       if (detectLegalInstructions) insert(LEGAL_INSTRUCTION) := Symplify.logicOf(input(INSTRUCTION), SymplifyBit.getPrimeImplicantsByTrueAndDontCare(spec.unzip._1.toSeq, Nil, 32))
       if (throwIllegalInstruction) {
@@ -182,6 +210,7 @@ class DecoderSimplePlugin(catchIllegalInstruction : Boolean = false,
     }
   }
 
+  //cxzzzz:生成testbench用的verilog,将内部数据经由寄存器从out端口输出
   def bench(toplevel : VexRiscv): Unit ={
     toplevel.rework{
       import toplevel.config._
@@ -208,10 +237,14 @@ object DecodingBench extends App{
 }
 
 
+//cxzzzz:TBC
 object Symplify{
+
+  //cxzzzz:cache用于暂存并复用中间节点(比如 a&b 用到两个组合逻辑中,则在硬件中仅生成一次 a&b,两逻辑共用)
   val cache = mutable.LinkedHashMap[Bits,mutable.LinkedHashMap[Masked,Bool]]()
   def getCache(addr : Bits) = cache.getOrElseUpdate(addr,mutable.LinkedHashMap[Masked,Bool]())
 
+  //cxzzzz:将各prime implicit求或，得到化简后的组合逻辑
   //Generate terms logic for the given input
   def logicOf(input : Bits,terms : Seq[Masked]) = terms.map(t => getCache(input).getOrElseUpdate(t,t === input)).asBits.orR
 
@@ -228,6 +261,7 @@ object Symplify{
 }
 
 object SymplifyBit{
+  //cxzzzz:Implicit说明:https://www.electronicsandcommunications.com/2018/03/prime-implicants-and-essential-prime.html
 
   //Return a new term with only one bit difference with 'term' and not included in falseTerms. above => 0 to 1 dif, else 1 to 0 diff
   def genImplicitDontCare(falseTerms: Seq[Masked], term: Masked, bits: Int, above: Boolean): Masked = {

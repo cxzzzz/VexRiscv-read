@@ -83,6 +83,7 @@ abstract class IBusFetcherImpl(val resetVector : BigInt,
   object DECOMPRESSOR
   object INJECTOR_M2S
 
+  //cxzzzz: injectorStage在fetch 和 decode之间，以降低delay
   def isDrivingDecode(s : Any): Boolean = {
     if(injectorStage) return s == INJECTOR_M2S
     s == IBUS_RSP || s == DECOMPRESSOR
@@ -143,6 +144,8 @@ abstract class IBusFetcherImpl(val resetVector : BigInt,
           pc := predictionPcLoad.payload
         }
       }
+
+      //cxzzzz:-?:redo是什么
       if(redo != null) when(redo.valid){
         correction := True
         pc := redo.payload
