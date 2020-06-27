@@ -20,6 +20,9 @@ class RegFilePlugin(regFileReadyKind : RegFileReadKind,
                     syncUpdateOnStall : Boolean = true,
                     withShadow : Boolean = false //shadow registers aren't transition hazard free
                    ) extends Plugin[VexRiscv] with RegFileService{
+  /*cxzzzz:shadow register(影子寄存器),减小的中断切换上下文时的开销(仅需要切换物理寄存器，而不需要重新load store一遍)
+    https://stackoverflow.com/questions/31422246/what-are-shadow-registers-in-mips-and-how-are-they-used
+  */
   import Riscv._
 
   override def readStage(): Stage = if(readInExecute) pipeline.execute else pipeline.decode
@@ -44,12 +47,14 @@ class RegFilePlugin(regFileReadyKind : RegFileReadKind,
       val regFile = Mem(Bits(32 bits),regFileSize) addAttribute(Verilator.public)
       if(zeroBoot) regFile.init(List.fill(regFileSize)(B(0, 32 bits)))
 
+      //cxzzzz:定义影子寄存器，并将其使用与否交由csr的0x7C0寄存器配置
       val shadow = ifGen(withShadow)(new Area{
         val write, read, clear = RegInit(False)
 
         read  clearWhen(clear && !readStage.arbitration.isStuck)
         write clearWhen(clear && !writeStage.arbitration.isStuck)
 
+        //cxzzzz:0x7C0-0x7FF Non-standard read/write(0x7C0由vexriscv定制,但并非所有CPU都如此，在rocket-chip中0x7C0用于设定branch-prediction mode)
         val csrService = pipeline.service(classOf[CsrInterface])
         csrService.w(0x7C0,2 -> clear, 1 -> read, 0 -> write)
       })
@@ -65,6 +70,7 @@ class RegFilePlugin(regFileReadyKind : RegFileReadKind,
       import readStage._
 
       //read register file
+      //cxzzzz:backticks在scala中的作用:1、避免与保留字冲突2、在match中指定与原变量匹配(而不是声明一个新的同名变量) https://stackoverflow.com/questions/6576594/need-clarification-on-scala-literal-identifiers-backticks
       val srcInstruction = regFileReadyKind match{
         case `ASYNC` => input(INSTRUCTION)
         case `SYNC` if !readInExecute =>  input(INSTRUCTION_ANTICIPATED)
@@ -105,6 +111,7 @@ class RegFilePlugin(regFileReadyKind : RegFileReadKind,
       if(x0Init) {
         val boot = RegNext(False) init (True)
         regFileWrite.valid setWhen (boot)
+        //cxzzzz:-?:为什么要区分writeStage==execute的情况?
         if (writeStage != execute) {
           inputInit[Bits](REGFILE_WRITE_DATA, 0)
           inputInit[Bits](INSTRUCTION, 0)
