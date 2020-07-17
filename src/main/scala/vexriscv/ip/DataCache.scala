@@ -340,7 +340,7 @@ case class DataCacheMemBus(p : DataCacheConfig) extends Bundle with IMasterSlave
 
 }
 
-
+//cxzzzz:write through: 写操作在writeback,同时写cache和memory,在完成之前阻塞指令
 class DataCache(p : DataCacheConfig) extends Component{
   import p._
   assert(cpuDataWidth == memDataWidth)
@@ -362,6 +362,17 @@ class DataCache(p : DataCacheConfig) extends Component{
   val wayLineLog2 = log2Up(wayLineCount)
   val wayWordCount = wayLineCount * wordPerLine
   val memTransactionPerLine = p.bytePerLine / (p.memDataWidth/8)
+
+  /*cxzzzz:
+    wayLineCount:每路有几个cache Line
+
+    e.g. linux: cacheSize:4096Byte bytePerLine:32  wayCount:1
+    --------------------------------
+    |31   12|11    5|4    2|1     0|
+    --------------------------------
+    |tag    |line   |word  |offset |    
+    --------------------------------
+  */
 
   val tagRange = addressWidth-1 downto log2Up(wayLineCount*bytePerLine)
   val lineRange = tagRange.low-1 downto log2Up(bytePerLine)
@@ -390,7 +401,15 @@ class DataCache(p : DataCacheConfig) extends Component{
     val mask = Bits(wordWidth/8 bits)
   })
 
-
+  /*cxzzzz:
+    Line:
+    e.g. Linux:
+    ---------------------------
+    |data     |tag    |valid  |
+    ---------------------------
+    |32bit*4  |20bit  |1bit   |
+    ---------------------------
+  */
 
   val ways = for(i <- 0 until wayCount) yield new Area{
     val tags = Mem(new LineInfo(), wayLineCount)
@@ -423,6 +442,7 @@ class DataCache(p : DataCacheConfig) extends Component{
   dataWriteCmd.valid := False
   dataWriteCmd.payload.assignDontCare()
 
+  //cxzzzz:同步mem,在execute发起读请求，memory获得返回值
   when(io.cpu.execute.isValid && !io.cpu.memory.isStuck){
     tagsReadCmd.valid   := True
     dataReadCmd.valid   := True
@@ -430,6 +450,7 @@ class DataCache(p : DataCacheConfig) extends Component{
     dataReadCmd.payload := io.cpu.execute.address(lineRange.high downto wordRange.low)
   }
 
+  //cxzzzz:判断读地址和写地址相同(或有重叠)
   def collisionProcess(readAddress : UInt, readMask : Bits): Bits ={
     val ret = Bits(wayCount bits)
     for(i <- 0 until wayCount){
@@ -438,6 +459,45 @@ class DataCache(p : DataCacheConfig) extends Component{
     ret
   }
 
+
+  /*cxzzzz:
+    ----------------------------------------------------------------------------------
+    stage   |execute                  |memory                 |writeback
+    ----------------------------------------------------------------------------------
+            |发起请求                 |
+            |set dataReadCmd          |set dataWriteCmd       |mmu转换  
+            |                         |memory.addr->mmu->
+            |                         |physicaladdr
+
+    注:在execute就发起cache读请求 ,读出结果后再与mmu结果比对(这要求page size(4kB) >= 每路cache大小 )
+
+    e.g. earlyWayHit = true earlyDataMux = false
+    -----------------------------------------
+    stage   |action
+    -----------------------------------------  
+    execute | execute.add -> sync read tag/data(发起读请求)
+            | 
+            |
+    -----------------------------------------  
+    memory  | memory.addr -> set dataWriteCmd
+            | memory.addr -> mmu -> physical addr
+            | sync read tag/read ->return tags/datas( multi ways)
+            | physical addr === tags( multi ways) -> wayHits
+            |
+    -----------------------------------------  
+    writebac|if( addr is ioAddr) -> write/read mem
+            |else if( cache hit || 非amo的写) -> wr:write cache &write mem
+            |                       amo: calu(1cycle) + write cache &write mem(1cycle)
+            |                       read/amo collision: redo
+            |else( cache not hit && (read || amo))  -> cache refill , redo
+    
+    write cache(writeback) 在read cache(memory)后级:
+        1、方便处理amo指令(读后写)
+        2、能够先读cache后匹配mmu(避免mmu对timing影响)(但write 必须等待mmu查询完成后写)
+        3、增加read/write collision(st x0,0(x1);ld x0,0(x1)),需要更多的redo
+  */
+
+  //cxzzzz: executeStage
   val stage0 = new Area{
     val mask = io.cpu.execute.size.mux (
       U(0)    -> B"0001",
@@ -447,6 +507,7 @@ class DataCache(p : DataCacheConfig) extends Component{
     val colisions = collisionProcess(io.cpu.execute.address(lineRange.high downto wordRange.low), mask)
   }
 
+  //cxzzzz: memoryStage
   val stageA = new Area{
     def stagePipe[T <: Data](that : T) = if(mergeExecuteMemory) CombInit(that) else RegNextWhen(that, !io.cpu.memory.isStuck)
     val request = stagePipe(io.cpu.execute.args)
@@ -467,6 +528,7 @@ class DataCache(p : DataCacheConfig) extends Component{
     }
   }
 
+  //cxzzzz: writebackStage
   val stageB = new Area {
     def stagePipe[T <: Data](that : T) = RegNextWhen(that, !io.cpu.writeBack.isStuck)
     def ramPipe[T <: Data](that : T) = if(mergeExecuteMemory) CombInit(that) else  RegNextWhen(that, !io.cpu.writeBack.isStuck)
@@ -526,6 +588,11 @@ class DataCache(p : DataCacheConfig) extends Component{
       }
     }
 
+    /*cxzzzz:amo指令  amoswap.w.aq rd, rs, (rt)
+      取出mem(rt),存入rd，将mem(rt)与rs操作后存回mem(rt)
+      (由于这里没有乱序且单核，不需要实现aq、rl )
+    */
+
     val requestDataBypass = CombInit(request.data)
     val isAmo = if(withAmo) request.isAmo else False
     val amo = withAmo generate new Area{
@@ -545,6 +612,7 @@ class DataCache(p : DataCacheConfig) extends Component{
         B"011"  -> (rf & mem),
         default -> (selectRf ? rf | mem)
       )
+      //cxzzzz: amo计算result和写mem分成两周期，以放松timing
       val resultRegValid = RegNext(True) clearWhen(!io.cpu.writeBack.isStuck)
       val resultReg = RegNext(result)
     }
@@ -565,8 +633,11 @@ class DataCache(p : DataCacheConfig) extends Component{
     io.mem.cmd.mask := mask
     io.mem.cmd.data := requestDataBypass
 
+    //cxzzzz:处理3种情况 1、io 2、cache命中或写(write through不需要cache) 3、refill(cache未命中的read或amo(amo也会读mem))
     when(io.cpu.writeBack.isValid) {
+      //cxzzzz:如果是io地址的话，需要直接访问mem
       when(mmuRsp.isIoAccess) {
+        //cxzzzz:指令halt,等待写入或读取完成
         io.cpu.writeBack.haltIt.clearWhen(request.wr ? io.mem.cmd.ready | io.mem.rsp.valid)
 
         io.mem.cmd.valid := !memCmdSent
@@ -574,11 +645,14 @@ class DataCache(p : DataCacheConfig) extends Component{
         io.mem.cmd.length := 0
         io.mem.cmd.last := True
 
+        //单独处理lrsc指令(失败的话，则不执行mem)
         if(withLrSc) when(request.isLrsc && !lrsc.reserved){
           io.mem.cmd.valid := False
           io.cpu.writeBack.haltIt := False
         }
       } otherwise {
+        //cxzzzz:处理cache命中或者 (非amo的写)
+        //cxzzzz:-? amo的写不能处理吗?(amo必须cache命中?)
         when(waysHit || request.wr && !isAmo) {   //Do not require a cache refill ?
           //Data cache update
           dataWriteCmd.valid setWhen(request.wr && waysHit)
@@ -587,6 +661,7 @@ class DataCache(p : DataCacheConfig) extends Component{
           dataWriteCmd.mask := mask
           dataWriteCmd.way := waysHits
 
+          //cxzzzz:写通cache,同时更新cache和memory
           //Write through
           io.mem.cmd.valid setWhen(request.wr)
           io.mem.cmd.address := mmuRsp.physicalAddress(tagRange.high downto wordRange.low) @@ U(0, wordRange.low bit)
@@ -594,6 +669,8 @@ class DataCache(p : DataCacheConfig) extends Component{
           io.mem.cmd.last := True
           io.cpu.writeBack.haltIt clearWhen(!request.wr || io.mem.cmd.ready)
 
+          //cxzzzz:amo实际在writeback阻塞了两个周期（1、计算result结果 2、写入结果)
+          //cxzzzz:cache命中且是amo的写
           if(withAmo) when(isAmo){
             when(!amo.resultRegValid) {
               io.mem.cmd.valid := False
@@ -603,17 +680,20 @@ class DataCache(p : DataCacheConfig) extends Component{
           }
 
           //On write to read colisions
+          //cxzzzz:以前发生过冲突，就将该指令redo.(withAmo则表明有可能是写指令，需要将mem拉低)
           when((!request.wr || isAmo) && (colisions & waysHits) =/= 0){
             io.cpu.redo := True
             if(withAmo) io.mem.cmd.valid := False
           }
 
+          //cxzzzz:如果lrsc失败，则拒绝写
           if(withLrSc) when(request.isLrsc && !lrsc.reserved){
             io.mem.cmd.valid := False
             dataWriteCmd.valid := False
             io.cpu.writeBack.haltIt := False
           }
-        } otherwise { //Do refill
+        } //cxzzzz:由于总是要redo,所以refill时不需要haltIt
+        otherwise { //Do refill
           //Emit cmd
           io.mem.cmd.valid setWhen(!memCmdSent)
           io.mem.cmd.wr := False
@@ -691,6 +771,7 @@ class DataCache(p : DataCacheConfig) extends Component{
       error := False
     }
 
+    //cxzzzz:waysAllocator:round robin
     when(!valid){
       waysAllocator := (waysAllocator ## waysAllocator.msb).resized
     }

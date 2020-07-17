@@ -14,6 +14,7 @@ object MulDivIterativePlugin{
   object FAST_DIV_VALUE extends Stageable(UInt(4 bits))
 }
 
+//cxzzzz:逐bit乘法/除法(每周期计算几bit由mulUnrollFactor、divUnrollFactor决定)
 class MulDivIterativePlugin(genMul : Boolean = true,
                             genDiv : Boolean = true,
                             mulUnrollFactor : Int = 1,
@@ -105,7 +106,7 @@ class MulDivIterativePlugin(genMul : Boolean = true,
         }
       })
 
-
+      //cxzzzz:TBC:div实现
       val div = ifGen(genDiv) (new Area{
         assert(isPow2(divUnrollFactor))
         def area = this

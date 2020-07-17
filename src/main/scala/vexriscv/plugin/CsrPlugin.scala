@@ -86,7 +86,15 @@ object CsrPluginConfig{
   def smallest : CsrPluginConfig = smallest(0x00000020l)
   def linuxMinimal(mtVecInit : BigInt) = CsrPluginConfig(
     catchIllegalAccess  = true,
-    mvendorid           = 1,
+    /*cxzzzz: 
+        mvendorid:Machine Vendor ID Register(制造商信息)
+        marchid:Machine Architecture ID Register(微架构信息)
+        mimpid:Machine Implementation ID Register
+        mhartid:Hart ID Register(核心id(在多线程中区分核心))
+        misa:Machine ISA Register(0表示该寄存器未实现)
+        mtvec:Machine Trap-Vector Base-Address Register
+    */
+    mvendorid           = 1,    
     marchid             = 2,
     mimpid              = 3,
     mhartid             = 0,

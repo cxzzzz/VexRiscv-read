@@ -113,6 +113,9 @@ class DebugPlugin(val debugClockDomain : ClockDomain, hardwareBreakpointCount : 
 
     val decoderService = pipeline.service(classOf[DecoderService])
 
+    /*cxzzzz:The EBREAK instruction is used by debuggers to cause control to be transferred back to a debugging environment. 
+      It generates a breakpoint exception and performs no other operation.
+    */
     decoderService.addDefault(IS_EBREAK, False)
     decoderService.add(EBREAK,List(IS_EBREAK -> True))
 
@@ -196,6 +199,7 @@ class DebugPlugin(val debugClockDomain : ClockDomain, hardwareBreakpointCount : 
       }
 
 
+      // 断点条件：1、遇到ebreak指令 2、pc与hardwareBreakpoint之一一致
       decode.insert(DO_EBREAK) := !haltIt && (decode.input(IS_EBREAK) || hardwareBreakpoints.map(hb => hb.valid && hb.pc === (decode.input(PC) >> 1)).foldLeft(False)(_ || _))
       when(execute.arbitration.isValid && execute.input(DO_EBREAK)){
         execute.arbitration.haltByOther := True

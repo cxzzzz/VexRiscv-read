@@ -5,6 +5,8 @@ import spinal.core._
 import spinal.lib.KeepAttribute
 
 //Input buffer generaly avoid the FPGA synthesis to duplicate reg inside the DSP cell, which could stress timings quite much.
+
+//cxzzzzz: execute/memory/write stage三周期实现乘法,先分解成4个16x16部分和，再累加
 class MulPlugin(inputBuffer : Boolean = false) extends Plugin[VexRiscv]{
   object MUL_LL extends Stageable(UInt(32 bits))
   object MUL_LH extends Stageable(SInt(34 bits))
@@ -59,6 +61,7 @@ class MulPlugin(inputBuffer : Boolean = false) extends Plugin[VexRiscv]{
         a := rs1
         b := rs2
 
+        //cxzzzz:-?:halt执行的是什么操作
         val delay = RegNext(arbitration.isStuck)
         when(arbitration.isValid && input(IS_MUL) && !delay){
           arbitration.haltItself := True
@@ -85,6 +88,7 @@ class MulPlugin(inputBuffer : Boolean = false) extends Plugin[VexRiscv]{
         }
       }
 
+      //cxzzzz:TBC:混合有无符号数的乘法
       val aULow = a(15 downto 0).asUInt
       val bULow = b(15 downto 0).asUInt
       val aSLow = (False ## a(15 downto 0)).asSInt

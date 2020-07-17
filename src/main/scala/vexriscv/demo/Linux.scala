@@ -247,6 +247,8 @@ object LinuxGen {
         ),
         //        new HazardSimplePlugin(false, true, false, true),
         //        new HazardSimplePlugin(false, false, false, false),
+
+        //cxzzzzz: execute/memory/write stage
         new MulPlugin,
         new MulDivIterativePlugin(
           genMul = false,

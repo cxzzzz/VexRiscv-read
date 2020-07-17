@@ -86,6 +86,13 @@ class DBusCachedPlugin(val config : DataCacheConfig,
       List(SB, SH, SW).map(_ -> storeActions)
     )
 
+    /*cxzzzz:LrSc: LR、SC指令
+      s. LR loads a word from the address in rs1, places the sign-extended value in rd, 
+      and registers a reservation on the memory address. 
+      SC writes a word in rs2 to the address in rs1, provided a valid reservation still 
+      exists on that address. SC writes zero to rd on success or a nonzero code on failure.
+
+    */
     if(withLrSc){
       List(LB, LH, LW, LBU, LHU, LWU, SB, SH, SW).foreach(e =>
         decoderService.add(e, Seq(MEMORY_LRSC -> False))
@@ -109,6 +116,7 @@ class DBusCachedPlugin(val config : DataCacheConfig,
       )
     }
 
+    //cxzzzz:TBC
     if(withAmo){
       List(LB, LH, LW, LBU, LHU, LWU, SB, SH, SW).foreach(e =>
         decoderService.add(e, Seq(MEMORY_AMO -> False))
